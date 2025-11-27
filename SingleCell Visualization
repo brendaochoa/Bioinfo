@@ -1,0 +1,1188 @@
+# ============================================
+# PAGE CONFIGURATION
+# ============================================
+
+st.set_page_config(
+    page_title="Single-Cell RNA-seq Explorer",
+    page_icon="🔬",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ============================================
+# LOTUS-INSPIRED CSS STYLING
+# ============================================
+
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600&family=Source+Sans+Pro:wght@300;400;600&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Source Sans Pro', 'Roboto', sans-serif;
+        font-size: 15px;
+        color: #2c3e50;
+    }
+
+    .main {
+        background-color: #f8f9fa;
+        padding: 2rem;
+    }
+
+    [data-testid="stSidebar"] {
+        background-color: #ffffff;
+        border-right: 1px solid #e1e4e8;
+        padding: 1.5rem 1rem;
+    }
+
+    .card {
+        background-color: white;
+        border: 1px solid #e1e4e8;
+        border-radius: 6px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+        font-size: 2rem !important;
+        font-weight: 400 !important;
+        color: #1d3557 !important;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.5rem !important;
+        border-bottom: 2px solid #457b9d;
+        padding-bottom: 0.5rem;
+    }
+
+    h2 {
+        font-size: 1.5rem !important;
+        font-weight: 500 !important;
+        color: #1d3557 !important;
+        margin-top: 1.5rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    h3 {
+        font-size: 1.2rem !important;
+        font-weight: 500 !important;
+        color: #2c3e50 !important;
+        margin-bottom: 0.8rem !important;
+    }
+
+    .subtitle {
+        font-size: 1rem;
+        color: #6c757d;
+        margin-bottom: 2rem;
+        font-weight: 300;
+    }
+
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2px;
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #e1e4e8;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: transparent;
+        border-radius: 4px 4px 0 0;
+        color: #6c757d;
+        font-weight: 500;
+        font-size: 0.95rem;
+        padding: 0 1.5rem;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: white;
+        color: #1d3557;
+        border-bottom: 3px solid #457b9d;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: 1.8rem !important;
+        font-weight: 500 !important;
+        color: #1d3557;
+    }
+
+    [data-testid="stMetricLabel"] {
+        font-size: 0.9rem !important;
+        font-weight: 400 !important;
+        color: #6c757d;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .stButton > button {
+        font-size: 0.9rem !important;
+        font-weight: 500 !important;
+        padding: 0.5rem 1.5rem !important;
+        border-radius: 4px !important;
+        border: 1px solid #457b9d !important;
+        background-color: #457b9d !important;
+        color: white !important;
+        transition: all 0.2s;
+    }
+
+    .stButton > button:hover {
+        background-color: #1d3557 !important;
+        border-color: #1d3557 !important;
+    }
+
+    .stSelectbox label, .stMultiSelect label, .stTextInput label, .stSlider label {
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        color: #2c3e50 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .stRadio > label {
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        color: #2c3e50 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .dataframe {
+        font-size: 0.85rem !important;
+        border: 1px solid #e1e4e8 !important;
+    }
+
+    .stAlert {
+        border-radius: 4px;
+        border-left: 4px solid #457b9d;
+    }
+
+    hr {
+        margin: 2rem 0;
+        border: none;
+        border-top: 1px solid #e1e4e8;
+    }
+
+    [data-testid="stFileUploader"] {
+        background-color: #f8f9fa;
+        border: 2px dashed #dee2e6;
+        border-radius: 4px;
+        padding: 1rem;
+    }
+
+    .stDownloadButton > button {
+        background-color: white !important;
+        color: #457b9d !important;
+        border: 1px solid #457b9d !important;
+    }
+
+    .stDownloadButton > button:hover {
+        background-color: #f8f9fa !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Set scanpy settings
+sc.settings.verbosity = 0
+sc.settings.set_figure_params(dpi=100, facecolor='white', frameon=False)
+
+# ============================================
+# DATA LOADING FUNCTIONS
+# ============================================
+
+def load_csv_to_anndata(file, transpose=False):
+    """Load CSV/TSV/Excel file and convert to AnnData object"""
+    file_name = file.name.lower()
+
+    try:
+        if file_name.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(file, index_col=0)
+        elif file_name.endswith('.csv'):
+            df = pd.read_csv(file, index_col=0)
+        else:
+            df = pd.read_csv(file, index_col=0, sep='\t')
+    except Exception as e:
+        file.seek(0)
+        try:
+            df = pd.read_csv(file, index_col=0, sep='\t')
+        except:
+            raise ValueError(f"Could not read file. Error: {str(e)}")
+
+    if transpose:
+        df = df.T
+
+    # Clean data
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    df = df.dropna(how='all', axis=0).dropna(how='all', axis=1)
+    df = df.fillna(0)
+    df = df.astype(np.float64)
+
+    # Create AnnData object
+    adata = AnnData(df.T)
+    adata.var_names_make_unique()
+    adata.obs_names_make_unique()
+
+    # Convert cell_type to categorical
+    adata.obs['cell_type'] = adata.obs_names
+    adata.obs['cell_type'] = adata.obs['cell_type'].astype('category')
+
+    # Store original dataframe
+    adata.uns['df_original'] = df
+    adata.uns['data_type'] = 'bulk' if df.shape[1] < 50 else 'single_cell'
+    adata.uns['n_samples'] = df.shape[1]
+
+    return adata
+
+def generate_test_data():
+    """Generate synthetic single-cell data"""
+    np.random.seed(42)
+
+    n_cells = 500
+    n_genes = 2000
+
+    # Create cell type labels
+    n_types = 4
+    cell_types = ['Type_A', 'Type_B', 'Type_C', 'Type_D']
+    cells_per_type = n_cells // n_types
+
+    # Generate expression data
+    data = []
+    cell_labels = []
+
+    for i, cell_type in enumerate(cell_types):
+        type_data = np.random.negative_binomial(5, 0.3, size=(cells_per_type, n_genes)).astype(np.float64)
+        marker_start = i * 100
+        marker_end = marker_start + 100
+        type_data[:, marker_start:marker_end] *= np.random.uniform(3, 8, size=(cells_per_type, 100))
+        data.append(type_data)
+        cell_labels.extend([cell_type] * cells_per_type)
+
+    data = np.vstack(data)
+
+    adata = AnnData(data)
+    adata.obs['cell_type'] = cell_labels
+    adata.obs['cell_type'] = adata.obs['cell_type'].astype('category')  # Convert to categorical
+    adata.obs['batch'] = np.random.choice(['Batch1', 'Batch2'], size=n_cells)
+    adata.var_names = [f'Gene_{i:04d}' for i in range(n_genes)]
+    adata.obs_names = [f'Cell_{i:04d}' for i in range(n_cells)]
+
+    # Create dataframe version
+    adata.uns['df_original'] = pd.DataFrame(data.T, index=adata.var_names, columns=adata.obs_names)
+    adata.uns['data_type'] = 'single_cell'
+    adata.uns['n_samples'] = n_cells
+
+    return adata
+
+# ============================================
+# PREPROCESSING FUNCTIONS
+# ============================================
+
+def preprocess_data(adata, min_genes=200, min_cells=3, n_top_genes=2000):
+    """Standard preprocessing pipeline"""
+    adata_copy = adata.copy()
+
+    # Ensure cell_type is categorical
+    if 'cell_type' in adata_copy.obs:
+        adata_copy.obs['cell_type'] = adata_copy.obs['cell_type'].astype('category')
+
+    # Basic filtering
+    sc.pp.filter_cells(adata_copy, min_genes=min_genes)
+    sc.pp.filter_genes(adata_copy, min_cells=min_cells)
+
+    # Normalization and log transformation
+    sc.pp.normalize_total(adata_copy, target_sum=1e4)
+    sc.pp.log1p(adata_copy)
+
+    # Store the normalized data for visualization
+    adata_copy.raw = adata_copy
+
+    # Highly variable genes
+    n_top_genes_adjusted = min(n_top_genes, adata_copy.n_vars)
+    sc.pp.highly_variable_genes(adata_copy, n_top_genes=n_top_genes_adjusted, flavor='seurat')
+
+    # PCA
+    max_pcs = min(adata_copy.n_obs - 1, adata_copy.n_vars - 1, 50)
+    n_comps = max(2, max_pcs)
+
+    sc.pp.scale(adata_copy, max_value=10)
+    sc.tl.pca(adata_copy, svd_solver='arpack', n_comps=n_comps)
+
+    # UMAP with better parameters
+    n_pcs_available = adata_copy.obsm['X_pca'].shape[1]
+    n_pcs = min(30, n_pcs_available)
+    n_neighbors = min(15, max(5, int(adata_copy.n_obs * 0.1)))  # Better neighbor calculation
+
+    sc.pp.neighbors(adata_copy, n_neighbors=n_neighbors, n_pcs=n_pcs)
+
+    if adata_copy.n_obs >= 4:
+        sc.tl.umap(adata_copy, min_dist=0.3, spread=1.0)  # Better UMAP parameters
+
+    return adata_copy
+
+# ============================================
+# VISUALIZATION FUNCTIONS
+# ============================================
+
+def plot_clustered_heatmap(df, genes, figsize=(14, 10), cmap='RdYlBu_r',
+                          z_score=None, title="Gene Expression Heatmap"):
+    """Create clustered heatmap"""
+    data = df.loc[genes].copy()
+
+    g = sns.clustermap(
+        data,
+        cmap=cmap,
+        z_score=z_score,
+        figsize=figsize,
+        cbar_kws={'label': 'Expression Level'},
+        dendrogram_ratio=0.15,
+        linewidths=0.5,
+        linecolor='white',
+        cbar_pos=(0.02, 0.8, 0.03, 0.15)
+    )
+
+    g.ax_heatmap.set_xlabel('Cell Types', fontsize=11)
+    g.ax_heatmap.set_ylabel('Genes', fontsize=11)
+    g.fig.suptitle(title, fontsize=13, y=0.98)
+
+    plt.setp(g.ax_heatmap.get_xticklabels(), rotation=45, ha='right')
+    plt.setp(g.ax_heatmap.get_yticklabels(), rotation=0)
+
+    return g.fig
+
+def plot_expression_barplot(df, genes, figsize=(14, 8)):
+    """Create grouped bar plot"""
+    data = df.loc[genes].T
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    x = np.arange(len(data.index))
+    width = 0.8 / len(genes)
+
+    colors = plt.cm.Set3(np.linspace(0, 1, len(genes)))
+
+    for i, gene in enumerate(genes):
+        offset = width * i - (width * len(genes) / 2) + width / 2
+        ax.bar(x + offset, data[gene], width, label=gene, color=colors[i],
+               edgecolor='white', linewidth=1.5)
+
+    ax.set_xlabel('Cell Types', fontsize=11)
+    ax.set_ylabel('Expression Level', fontsize=11)
+    ax.set_title('Gene Expression Across Cell Types', fontsize=13, pad=15)
+    ax.set_xticks(x)
+    ax.set_xticklabels(data.index, rotation=45, ha='right')
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', frameon=True)
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    plt.tight_layout()
+    return fig
+
+def plot_umap_gene_expression(adata, genes, figsize=(10, 8), cmap='viridis', point_size=None):
+    """Create UMAP plot using scanpy's built-in function for better visualization"""
+    if len(genes) == 0:
+        return None
+
+    # Calculate point size based on number of cells
+    if point_size is None:
+        n_cells = adata.n_obs
+        if n_cells > 1000:
+            point_size = 120000 / n_cells
+        else:
+            point_size = 50
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize)
+
+    if len(genes) > 1:
+        # For multiple genes, calculate average expression
+        if hasattr(adata, 'raw') and adata.raw is not None:
+            expression_data = adata.raw.X
+        else:
+            expression_data = adata.X
+
+        if hasattr(expression_data, 'toarray'):
+            expression_data = expression_data.toarray()
+
+        # Find valid gene indices
+        gene_indices = []
+        valid_genes = []
+        for gene in genes:
+            if gene in adata.var_names:
+                idx = np.where(adata.var_names == gene)[0][0]
+                gene_indices.append(idx)
+                valid_genes.append(gene)
+
+        if gene_indices:
+            # Calculate average expression
+            avg_expression = np.mean(expression_data[:, gene_indices], axis=1)
+
+            # Use scanpy's plotting function for better visualization
+            temp_adata = adata.copy()
+            temp_adata.obs['avg_expression'] = avg_expression
+
+            sc.pl.umap(
+                temp_adata,
+                color='avg_expression',
+                size=point_size,
+                cmap=cmap,
+                show=False,
+                ax=ax,
+                title=f'Average Expression of {len(valid_genes)} Genes',
+                frameon=False,
+                legend_loc='right'
+            )
+        else:
+            ax.text(0.5, 0.5, 'No valid genes selected', transform=ax.transAxes,
+                   ha='center', va='center', fontsize=12)
+            ax.set_title('UMAP', fontsize=14, pad=20)
+
+    else:
+        # Single gene - use scanpy's built-in function
+        gene = genes[0]
+        if gene in adata.var_names:
+            sc.pl.umap(
+                adata,
+                color=gene,
+                size=point_size,
+                cmap=cmap,
+                show=False,
+                ax=ax,
+                title=f'{gene} Expression',
+                frameon=False,
+                legend_loc='right'
+            )
+        else:
+            ax.text(0.5, 0.5, f'Gene {gene} not found', transform=ax.transAxes,
+                   ha='center', va='center', fontsize=12)
+            ax.set_title('UMAP', fontsize=14, pad=20)
+
+    plt.tight_layout()
+    return fig
+
+def plot_umap_cell_types(adata, figsize=(10, 8), point_size=None):
+    """Create UMAP colored by cell types using scanpy's built-in function"""
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Calculate point size based on number of cells
+    if point_size is None:
+        n_cells = adata.n_obs
+        if n_cells > 1000:
+            point_size = 120000 / n_cells
+        else:
+            point_size = 50
+
+    if 'cell_type' in adata.obs:
+        sc.pl.umap(
+            adata,
+            color='cell_type',
+            size=point_size,
+            show=False,
+            ax=ax,
+            title='Cell Types',
+            frameon=False,
+            legend_loc='right'
+        )
+    else:
+        # If no cell types, just plot the points
+        sc.pl.umap(
+            adata,
+            color=None,
+            size=point_size,
+            show=False,
+            ax=ax,
+            title='UMAP',
+            frameon=False
+        )
+
+    plt.tight_layout()
+    return fig
+
+def plot_dotplot(adata, genes, groupby, figsize=(12, 6)):
+    """Create dot plot"""
+    fig, ax = plt.subplots(figsize=figsize)
+    sc.pl.dotplot(adata, genes, groupby=groupby, show=False, ax=ax)
+    plt.tight_layout()
+    return fig
+
+def plot_violin(adata, genes, groupby, figsize=(14, 5)):
+    """Create violin plot"""
+    # Ensure the groupby column is categorical
+    if groupby in adata.obs and adata.obs[groupby].dtype.name != 'category':
+        adata.obs[groupby] = adata.obs[groupby].astype('category')
+
+    fig, ax = plt.subplots(figsize=figsize)
+    sc.pl.violin(adata, genes, groupby=groupby, show=False, ax=ax)
+    plt.tight_layout()
+    return fig
+
+def plot_correlation_heatmap(df, figsize=(10, 8)):
+    """Create correlation heatmap"""
+    corr = df.T.corr()
+
+    fig, ax = plt.subplots(figsize=figsize)
+    mask = np.triu(np.ones_like(corr, dtype=bool))
+
+    sns.heatmap(corr, mask=mask, cmap='coolwarm', center=0,
+                square=True, linewidths=1, cbar_kws={"shrink": 0.8},
+                annot=True, fmt='.2f', ax=ax)
+
+    ax.set_title('Cell Type Correlation Matrix', fontsize=13, pad=15)
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
+
+    plt.tight_layout()
+    return fig
+
+# ============================================
+# SIDEBAR
+# ============================================
+
+with st.sidebar:
+    st.markdown("### Data Management")
+    st.markdown("<div style='height: 0.5rem'></div>", unsafe_allow_html=True)
+
+    data_source = st.radio(
+        "Data Source",
+        ["Demo Dataset", "Upload CSV/TSV File"],
+        help="Choose between synthetic data or your own dataset"
+    )
+
+    adata = None
+
+    if data_source == "Demo Dataset":
+        if st.button("Generate Demo Data", use_container_width=True):
+            with st.spinner("Generating synthetic single-cell data..."):
+                adata = generate_test_data()
+                st.session_state['adata'] = adata
+                st.success("Demo dataset generated successfully")
+
+        if 'adata' in st.session_state:
+            adata = st.session_state['adata']
+
+    else:
+        uploaded_file = st.file_uploader(
+            "Upload Expression Matrix",
+            type=['csv', 'tsv', 'txt', 'xlsx', 'xls'],
+            help="Genes as rows, cell types as columns"
+        )
+
+        if uploaded_file is not None:
+            transpose_data = st.checkbox(
+                "Transpose matrix",
+                value=False,
+                help="Check if genes are in columns"
+            )
+
+            if st.button("Load Data", use_container_width=True):
+                try:
+                    with st.spinner("Loading data..."):
+                        adata = load_csv_to_anndata(uploaded_file, transpose=transpose_data)
+                        st.session_state['adata'] = adata
+
+                        is_bulk = adata.uns.get('data_type') == 'bulk'
+                        if is_bulk:
+                            st.success(f"✓ Loaded: {adata.n_obs} cell types × {adata.n_vars} genes")
+                        else:
+                            st.success(f"✓ Loaded: {adata.n_obs} cells × {adata.n_vars} genes")
+
+                        st.info("Data cleaned and ready for analysis")
+
+                        # Show data summary
+                        st.markdown("### Data Summary")
+                        st.write(f"**File name:** {uploaded_file.name}")
+                        st.write(f"**Data shape:** {adata.uns['df_original'].shape[0]} genes × {adata.uns['df_original'].shape[1]} samples")
+                        st.write(f"**Data type:** {'Bulk RNA-seq' if is_bulk else 'Single-cell RNA-seq'}")
+
+                except Exception as e:
+                    st.error(f"Error loading file: {str(e)}")
+
+            if 'adata' in st.session_state:
+                adata = st.session_state['adata']
+
+    # Preprocessing
+    if adata is not None:
+        st.markdown("---")
+        st.markdown("### Preprocessing")
+
+        if st.button("Run Standard Pipeline", use_container_width=True):
+            with st.spinner("Preprocessing data..."):
+                try:
+                    preprocessed = preprocess_data(adata)
+                    st.session_state['adata_processed'] = preprocessed
+                    st.success("Preprocessing completed")
+
+                    if 'X_pca' in preprocessed.obsm:
+                        n_pcs = preprocessed.obsm['X_pca'].shape[1]
+                        st.info(f"Computed {n_pcs} principal components")
+                    if 'X_umap' in preprocessed.obsm:
+                        st.info("UMAP coordinates computed successfully")
+
+                    # Show preprocessing summary
+                    st.markdown("### Preprocessing Summary")
+                    st.write(f"**Cells after filtering:** {preprocessed.n_obs}")
+                    st.write(f"**Genes after filtering:** {preprocessed.n_vars}")
+                    st.write(f"**Highly variable genes:** {preprocessed.var['highly_variable'].sum()}")
+
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+
+        use_processed = st.checkbox(
+            "Use preprocessed data",
+            value='adata_processed' in st.session_state,
+            disabled='adata_processed' not in st.session_state
+        )
+
+        if use_processed and 'adata_processed' in st.session_state:
+            adata = st.session_state['adata_processed']
+
+    st.markdown("---")
+
+    st.markdown("### About")
+    st.markdown("""
+    <div style='font-size: 0.85rem; color: #6c757d; line-height: 1.6;'>
+    <strong>Version:</strong> 2.0<br>
+    <strong>Framework:</strong> Scanpy + Seaborn<br><br>
+
+    <strong>Visualization Types:</strong>
+    <ul style='margin-top: 0.5rem; padding-left: 1.2rem;'>
+    <li>Clustered heatmaps</li>
+    <li>UMAP multi-panel plots</li>
+    <li>Bar chart comparisons</li>
+    <li>Dot plots & violin plots</li>
+    <li>Correlation analysis</li>
+    </ul>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ============================================
+# MAIN CONTENT
+# ============================================
+
+st.markdown("<h1>Single-Cell RNA-seq Expression Explorer</h1>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Interactive visualization platform for transcriptomics data analysis</div>", unsafe_allow_html=True)
+
+if adata is not None:
+
+    # Enhanced Metrics with more information
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Observations", f"{adata.n_obs:,}")
+    with col2:
+        st.metric("Variables", f"{adata.n_vars:,}")
+    with col3:
+        try:
+            if hasattr(adata.X, 'toarray'):
+                total = float(adata.X.toarray().sum())
+            else:
+                total = float(adata.X.sum())
+            st.metric("Total Counts", f"{total:,.0f}")
+        except:
+            st.metric("Total Counts", "N/A")
+    with col4:
+        is_bulk = adata.uns.get('data_type') == 'bulk'
+        st.metric("Data Type", "Bulk" if is_bulk else "Single-cell")
+
+    # Additional data information
+    col5, col6 = st.columns(2)
+    with col5:
+        if 'df_original' in adata.uns:
+            original_shape = adata.uns['df_original'].shape
+            st.info(f"**Original data:** {original_shape[0]} genes × {original_shape[1]} samples")
+    with col6:
+        if 'adata_processed' in st.session_state:
+            st.success("**Status:** Preprocessed data loaded")
+        else:
+            st.warning("**Status:** Raw data - run preprocessing for UMAP")
+
+    st.markdown("<div style='height: 2rem'></div>", unsafe_allow_html=True)
+
+    # Main tabs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "Overview",
+        "Heatmap Analysis",
+        "UMAP Visualization",
+        "Bar Chart Comparison",
+        "Comparative Plots"
+    ])
+
+    # TAB 1: OVERVIEW
+    with tab1:
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            st.markdown("### Dataset Information")
+
+            if 'df_original' in adata.uns:
+                df = adata.uns['df_original']
+                st.dataframe(df.head(15), use_container_width=True, height=400)
+
+                # Show data statistics
+                st.markdown("### Data Statistics")
+                col1a, col2a, col3a = st.columns(3)
+                with col1a:
+                    st.metric("Total Genes", f"{df.shape[0]:,}")
+                with col2a:
+                    st.metric("Total Samples", f"{df.shape[1]:,}")
+                with col3a:
+                    st.metric("Total Values", f"{df.size:,}")
+
+            else:
+                if hasattr(adata.X, 'toarray'):
+                    preview_data = adata.X[:10, :10].toarray()
+                else:
+                    preview_data = adata.X[:10, :10]
+
+                preview_df = pd.DataFrame(
+                    preview_data,
+                    index=adata.obs_names[:10],
+                    columns=adata.var_names[:10]
+                )
+                st.dataframe(preview_df, use_container_width=True)
+
+        with col2:
+            st.markdown("### Quick Statistics")
+
+            if hasattr(adata.X, 'toarray'):
+                X_dense = adata.X.toarray()
+            else:
+                X_dense = adata.X
+
+            stats_df = pd.DataFrame({
+                'Metric': ['Mean Expression', 'Median Expression', 'Std Dev',
+                          'Min Expression', 'Max Expression', 'Sparsity'],
+                'Value': [
+                    f"{np.mean(X_dense):.2f}",
+                    f"{np.median(X_dense):.2f}",
+                    f"{np.std(X_dense):.2f}",
+                    f"{np.min(X_dense):.2f}",
+                    f"{np.max(X_dense):.2f}",
+                    f"{(X_dense == 0).sum() / X_dense.size * 100:.1f}%"
+                ]
+            })
+            st.dataframe(stats_df, use_container_width=True, hide_index=True)
+
+            st.markdown("### Cell Type Summary")
+            if 'cell_type' in adata.obs.columns:
+                counts = adata.obs['cell_type'].value_counts()
+                counts_df = pd.DataFrame({
+                    'Cell Type': counts.index,
+                    'Count': counts.values
+                })
+                st.dataframe(counts_df, use_container_width=True, hide_index=True)
+
+    # TAB 2: HEATMAP
+    with tab2:
+        st.markdown("### Clustered Heatmap Analysis")
+
+        if 'df_original' not in adata.uns:
+            st.warning("This visualization works best with bulk/pseudobulk data. Please upload a gene × cell_type matrix.")
+        else:
+            df = adata.uns['df_original']
+
+            col1, col2 = st.columns([1, 3])
+
+            with col1:
+                st.markdown("#### Gene Selection")
+
+                selection_method = st.radio(
+                    "Selection Method",
+                    ["Top by Variance", "Top by Mean", "Custom List"]
+                )
+
+                if selection_method == "Top by Variance":
+                    n_genes = st.slider("Number of genes", 1, 50, 20)  # Changed max to 50
+                    gene_var = df.var(axis=1).nlargest(n_genes)
+                    selected_genes = gene_var.index.tolist()
+                    st.info(f"Selected top {n_genes} genes by variance")
+
+                elif selection_method == "Top by Mean":
+                    n_genes = st.slider("Number of genes", 1, 50, 20)  # Changed max to 50
+                    gene_mean = df.mean(axis=1).nlargest(n_genes)
+                    selected_genes = gene_mean.index.tolist()
+                    st.info(f"Selected top {n_genes} genes by mean expression")
+
+                else:
+                    search = st.text_input("Search genes", "")
+                    available = df.index.tolist()
+                    if search:
+                        available = [g for g in available if search.upper() in g.upper()]
+                    selected_genes = st.multiselect(
+                        "Select genes (max 50)",
+                        available,
+                        default=available[:20] if len(available) >= 20 else available,
+                        max_selections=50  # Added max selections
+                    )
+
+                st.markdown("#### Visualization Options")
+
+                z_score_option = st.selectbox(
+                    "Standardization",
+                    [("None", None), ("By Gene", 0), ("By Cell Type", 1)],
+                    format_func=lambda x: x[0]
+                )
+                z_score = z_score_option[1]
+
+                cmap = st.selectbox(
+                    "Color Palette",
+                    ['RdYlBu_r', 'viridis', 'coolwarm', 'plasma', 'Spectral']
+                )
+
+                fig_height = st.slider("Figure Height", 8, 20, 12)
+
+            with col2:
+                if len(selected_genes) > 0:
+                    try:
+                        fig = plot_clustered_heatmap(
+                            df, selected_genes,
+                            figsize=(14, fig_height),
+                            cmap=cmap,
+                            z_score=z_score
+                        )
+                        st.pyplot(fig, use_container_width=True)
+
+                        buf = io.BytesIO()
+                        fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
+                        buf.seek(0)
+                        st.download_button(
+                            "Download Heatmap (PNG)",
+                            data=buf,
+                            file_name="heatmap.png",
+                            mime="image/png",
+                            use_container_width=True
+                        )
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+                else:
+                    st.warning("Please select genes to visualize")
+
+    # TAB 3: UMAP VISUALIZATION
+    with tab3:
+        st.markdown("### UMAP Visualization")
+
+        has_umap = 'X_umap' in adata.obsm.keys()
+
+        if not has_umap:
+            st.warning("Please run preprocessing first to compute UMAP coordinates")
+
+            if st.button("Run Preprocessing Now"):
+                with st.spinner("Computing UMAP..."):
+                    try:
+                        preprocessed = preprocess_data(adata)
+                        st.session_state['adata_processed'] = preprocessed
+                        st.success("UMAP computed successfully")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+        else:
+            col1, col2 = st.columns([1, 3])
+
+            with col1:
+                st.markdown("#### Visualization Type")
+
+                umap_type = st.radio(
+                    "Select UMAP type",
+                    ["Gene Expression", "Cell Types"],
+                    help="Visualize gene expression or cell type distribution"
+                )
+
+                if umap_type == "Gene Expression":
+                    st.markdown("#### Gene Selection")
+
+                    selection_method = st.radio(
+                        "Selection Method",
+                        ["Top by Variance", "Top by Mean", "Custom List"],
+                        key="umap_selection_method"
+                    )
+
+                    if selection_method == "Top by Variance":
+                        # Use normalized data if available, otherwise use raw data
+                        if hasattr(adata, 'raw') and adata.raw is not None:
+                            expression_data = adata.raw.X
+                        else:
+                            expression_data = adata.X
+
+                        if hasattr(expression_data, 'toarray'):
+                            expression_data = expression_data.toarray()
+
+                        gene_variances = np.var(expression_data, axis=0)
+                        top_var_indices = np.argsort(gene_variances)[::-1]
+
+                        n_genes = st.slider("Number of genes", 1, 50, 10, key="umap_var_slider")  # Changed max to 50
+                        selected_indices = top_var_indices[:n_genes]
+                        selected_genes = adata.var_names[selected_indices].tolist()
+
+                        st.info(f"Selected top {n_genes} genes by variance")
+
+                    elif selection_method == "Top by Mean":
+                        # Use normalized data if available, otherwise use raw data
+                        if hasattr(adata, 'raw') and adata.raw is not None:
+                            expression_data = adata.raw.X
+                        else:
+                            expression_data = adata.X
+
+                        if hasattr(expression_data, 'toarray'):
+                            expression_data = expression_data.toarray()
+
+                        gene_means = np.mean(expression_data, axis=0)
+                        top_mean_indices = np.argsort(gene_means)[::-1]
+
+                        n_genes = st.slider("Number of genes", 1, 50, 10, key="umap_mean_slider")  # Changed max to 50
+                        selected_indices = top_mean_indices[:n_genes]
+                        selected_genes = adata.var_names[selected_indices].tolist()
+
+                        st.info(f"Selected top {n_genes} genes by mean expression")
+
+                    else:  # Custom List
+                        search = st.text_input("Search genes", "", key="umap_search")
+                        available = adata.var_names.tolist()
+                        if search:
+                            available = [g for g in available if search.upper() in g.upper()]
+
+                        selected_genes = st.multiselect(
+                            "Select genes to visualize (max 50)",
+                            available,
+                            default=available[:5] if len(available) >= 5 else available,
+                            key="umap_genes",
+                            max_selections=50  # Added max selections
+                        )
+
+                    st.markdown("#### Plot Settings")
+
+                    point_size = st.slider("Point size", 10, 200, 50, key="umap_point_size")
+                    cmap = st.selectbox(
+                        "Color Palette",
+                        ['viridis', 'plasma', 'inferno', 'magma', 'cividis', 'coolwarm', 'Reds', 'Blues'],
+                        key="umap_cmap"
+                    )
+
+            with col2:
+                if umap_type == "Gene Expression":
+                    if 'selected_genes' in locals() and len(selected_genes) > 0:
+                        try:
+                            fig = plot_umap_gene_expression(
+                                adata,
+                                selected_genes,
+                                point_size=point_size,
+                                cmap=cmap
+                            )
+                            st.pyplot(fig, use_container_width=True)
+
+                            buf = io.BytesIO()
+                            fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
+                            buf.seek(0)
+                            st.download_button(
+                                "Download UMAP (PNG)",
+                                data=buf,
+                                file_name="umap_plot.png",
+                                mime="image/png",
+                                use_container_width=True
+                            )
+
+                            # Show gene information
+                            st.markdown("#### Selected Genes Information")
+                            gene_info = []
+                            for gene in selected_genes:
+                                if gene in adata.var_names:
+                                    # Use normalized data if available
+                                    if hasattr(adata, 'raw') and adata.raw is not None:
+                                        expression = adata.raw[:, gene].X
+                                    else:
+                                        expression = adata[:, gene].X
+
+                                    if hasattr(expression, 'toarray'):
+                                        expression = expression.toarray().flatten()
+                                    elif hasattr(expression, 'flatten'):
+                                        expression = expression.flatten()
+
+                                    gene_info.append({
+                                        'Gene': gene,
+                                        'Mean Expression': f"{np.mean(expression):.3f}",
+                                        'Max Expression': f"{np.max(expression):.3f}",
+                                        'Min Expression': f"{np.min(expression):.3f}",
+                                        'Variance': f"{np.var(expression):.3f}"
+                                    })
+
+                            if gene_info:
+                                st.dataframe(pd.DataFrame(gene_info), use_container_width=True)
+
+                        except Exception as e:
+                            st.error(f"Error generating UMAP: {str(e)}")
+                    else:
+                        st.warning("Please select genes to visualize")
+
+                else:  # Cell Types UMAP
+                    try:
+                        point_size_ct = st.slider("Point size", 10, 200, 50, key="umap_point_size_ct")
+                        fig = plot_umap_cell_types(adata, point_size=point_size_ct)
+                        st.pyplot(fig, use_container_width=True)
+
+                        buf = io.BytesIO()
+                        fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
+                        buf.seek(0)
+                        st.download_button(
+                            "Download UMAP (PNG)",
+                            data=buf,
+                            file_name="umap_cell_types.png",
+                            mime="image/png",
+                            use_container_width=True
+                        )
+                    except Exception as e:
+                        st.error(f"Error generating UMAP: {str(e)}")
+
+    # TAB 4: BAR CHART COMPARISON
+    with tab4:
+        st.markdown("### Bar Chart Comparison")
+
+        if 'df_original' not in adata.uns:
+            st.warning("This visualization works best with bulk/pseudobulk data.")
+        else:
+            df = adata.uns['df_original']
+
+            col1, col2 = st.columns([1, 3])
+
+            with col1:
+                st.markdown("#### Gene Selection")
+
+                selection_method = st.radio(
+                    "Selection Method",
+                    ["Top by Variance", "Top by Mean", "Custom List"],
+                    key="bar_selection_method"
+                )
+
+                if selection_method == "Top by Variance":
+                    n_genes = st.slider("Number of genes", 1, 50, 10, key="bar_var_slider")  # Changed max to 50
+                    gene_var = df.var(axis=1).nlargest(n_genes)
+                    selected_genes = gene_var.index.tolist()
+                    st.info(f"Selected top {n_genes} genes by variance")
+
+                elif selection_method == "Top by Mean":
+                    n_genes = st.slider("Number of genes", 1, 50, 10, key="bar_mean_slider")  # Changed max to 50
+                    gene_mean = df.mean(axis=1).nlargest(n_genes)
+                    selected_genes = gene_mean.index.tolist()
+                    st.info(f"Selected top {n_genes} genes by mean expression")
+
+                else:  # Custom List
+                    search = st.text_input("Search genes", "", key="bar_search")
+                    available = df.index.tolist()
+                    if search:
+                        available = [g for g in available if search.upper() in g.upper()]
+
+                    selected_genes = st.multiselect(
+                        "Select genes to compare (max 50)",
+                        available,
+                        default=available[:5] if len(available) >= 5 else available,
+                        key="bar_genes",
+                        max_selections=50  # Added max selections
+                    )
+
+            with col2:
+                if len(selected_genes) > 0:
+                    try:
+                        fig = plot_expression_barplot(df, selected_genes)
+                        st.pyplot(fig, use_container_width=True)
+
+                        buf = io.BytesIO()
+                        fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
+                        buf.seek(0)
+                        st.download_button(
+                            "Download Bar Chart (PNG)",
+                            data=buf,
+                            file_name="bar_chart.png",
+                            mime="image/png",
+                            use_container_width=True
+                        )
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+                else:
+                    st.warning("Please select genes to visualize")
+
+    # TAB 5: COMPARATIVE PLOTS
+    with tab5:
+        st.markdown("### Comparative Analysis")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("#### Dot Plot")
+            if 'cell_type' in adata.obs.columns:
+                search = st.text_input("Search genes", "", key="dot_search")
+                available = adata.var_names.tolist()
+                if search:
+                    available = [g for g in available if search.upper() in g.upper()]
+
+                dot_genes = st.multiselect(
+                    "Select genes for dot plot",
+                    available,
+                    default=available[:8] if len(available) >= 8 else available,
+                    key="dot_genes"
+                )
+
+                if len(dot_genes) > 0:
+                    try:
+                        fig = plot_dotplot(adata, dot_genes, groupby='cell_type')
+                        st.pyplot(fig, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+
+        with col2:
+            st.markdown("#### Violin Plot")
+            if 'cell_type' in adata.obs.columns:
+                search = st.text_input("Search genes", "", key="violin_search")
+                available = adata.var_names.tolist()
+                if search:
+                    available = [g for g in available if search.upper() in g.upper()]
+
+                violin_genes = st.multiselect(
+                    "Select genes for violin plot",
+                    available,
+                    default=available[:4] if len(available) >= 4 else available,
+                    key="violin_genes"
+                )
+
+                if len(violin_genes) > 0:
+                    try:
+                        fig = plot_violin(adata, violin_genes, groupby='cell_type')
+                        st.pyplot(fig, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+
+        # Correlation heatmap
+        if 'df_original' in adata.uns:
+            st.markdown("#### Correlation Heatmap")
+            df = adata.uns['df_original']
+
+            if st.checkbox("Show correlation heatmap"):
+                try:
+                    fig = plot_correlation_heatmap(df)
+                    st.pyplot(fig, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+
+else:
+    st.markdown("""
+    <div class='card'>
+        <h3>Welcome to Single-Cell RNA-seq Explorer</h3>
+        <p>To get started, please:</p>
+        <ol>
+            <li>Upload your expression data file (CSV/TSV/Excel) using the sidebar</li>
+            <li>Or generate a demo dataset to explore the features</li>
+        </ol>
+        <p><strong>Expected data format:</strong> Genes as rows, cell types/samples as columns</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin-top: 2rem;'>
+        <div class='card'>
+            <h4>📊 Heatmap Analysis</h4>
+            <p>Interactive clustered heatmaps with gene selection and clustering options.</p>
+        </div>
+        <div class='card'>
+            <h4>🔬 UMAP Visualization</h4>
+            <p>UMAP plots to visualize gene expression patterns or cell type distribution.</p>
+        </div>
+        <div class='card'>
+            <h4>📈 Comparative Plots</h4>
+            <p>Bar charts, dot plots, and violin plots for detailed gene expression analysis.</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)

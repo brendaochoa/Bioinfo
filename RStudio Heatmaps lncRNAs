@@ -1,0 +1,296 @@
+#CARGAR DATOS
+cat("✓ Datos cargados:\n")
+cat("  Total lncRNAs:", nrow(datos), "\n")
+cat("  Total muestras:", (ncol(datos))/2, "\n")
+cat("  Primeros lncRNAs:", head(rownames(datos), 3), "\n\n")
+
+# Identificar columnas TPM y NumReads
+tpm_cols <- grep("_TPM$", colnames(datos))
+counts_cols <- grep("_NumReads$", colnames(datos))
+
+# MATRIZ TPM
+tpm_matrix_original <- as.matrix(datos[, tpm_cols])
+colnames(tpm_matrix_original) <- gsub("_TPM", "", colnames(tpm_matrix_original))
+
+# MATRIZ COUNTS (redondear porque DESeq2 necesita enteros)
+counts_matrix <- round(as.matrix(datos[, counts_cols]))
+colnames(counts_matrix) <- gsub("_NumReads", "", colnames(counts_matrix))
+
+cat("✓ Matrices creadas:\n")
+cat("  TPM matrix:", nrow(tpm_matrix_original), "lncRNAs x", ncol(tpm_matrix_original), "muestras\n")
+cat("  Counts matrix:", nrow(counts_matrix), "lncRNAs x", ncol(counts_matrix), "muestras\n\n")
+
+# PASO 3: METADATA ----
+# AJUSTA SEGÚN TU DISEÑO EXPERIMENTAL
+coldata <- data.frame(
+  sample = c("SRR1569474", "SRR1569475", "SRR1569476", "SRR1569477", 
+             "SRR1569478", "SRR1569479", "SRR1569486"),
+  condition = factor(c("Control", "Control", "Control", "Control",
+                       "Waterlogging", "Waterlogging", "Waterlogging"),
+                     levels = c("Control", "Waterlogging"))
+)
+rownames(coldata) <- coldata$sample
+
+cat("✓ Diseño experimental:\n")
+print(coldata)
+cat("\n")
+
+# PASO 4: ANÁLISIS DESEQ2 ----
+cat("Ejecutando DESeq2...\n")
+
+dds <- DESeqDataSetFromMatrix(
+  countData = counts_matrix,
+  colData = coldata,
+  design = ~ condition
+)
+
+# Filtrar lncRNAs con muy baja expresión
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+cat("lncRNAs analizados (>= 10 reads):", sum(keep), "\n\n")
+
+# Ejecutar DESeq2
+dds <- DESeq(dds)
+
+# Obtener resultados (Waterlogging vs Control)
+res <- results(dds, contrast = c("condition", "Waterlogging", "Control"))
+res <- as.data.frame(res)
+
+cat("Resumen de resultados:\n")
+summary(res)
+
+# PASO 5: FILTRAR TPM_MATRIX PARA COINCIDIR CON GENES DE DESEQ2 ----
+genes_kept <- rownames(dds)
+tpm_matrix <- tpm_matrix_original[genes_kept, ]
+
+cat("\n✓ Matrices sincronizadas:\n")
+cat("  lncRNAs en DESeq2:", nrow(res), "\n")
+cat("  lncRNAs en tpm_matrix:", nrow(tpm_matrix), "\n\n")
+
+# PASO 6: SELECCIONAR TOP 50 ----
+cat("========================================\n")
+cat("SELECTING TOP 50 lncRNAs\n")
+cat("========================================\n\n")
+
+sig_005 <- rownames(res)[which(!is.na(res$padj) & res$padj < 0.05 & abs(res$log2FoldChange) > 1)]
+sig_001 <- rownames(res)[which(!is.na(res$padj) & res$padj < 0.01 & abs(res$log2FoldChange) > 1)]
+sig_0001 <- rownames(res)[which(!is.na(res$padj) & res$padj < 0.001 & abs(res$log2FoldChange) > 1)]
+
+cat(sprintf("padj < 0.05:  %d lncRNAs\n", length(sig_005)))
+cat(sprintf("padj < 0.01:  %d lncRNAs\n", length(sig_001)))
+cat(sprintf("padj < 0.001: %d lncRNAs\n\n", length(sig_0001)))
+
+select_top50 <- function(res_object, sig_genes, criterion_name) {
+  if(length(sig_genes) == 0) return(character(0))
+  res_filtered <- res_object[sig_genes, ]
+  res_ordered <- res_filtered[order(abs(res_filtered$log2FoldChange), decreasing = TRUE), ]
+  n_select <- min(50, nrow(res_ordered))
+  top_genes <- head(rownames(res_ordered), n_select)
+  cat(sprintf("✓ %s: %d lncRNAs\n", criterion_name, n_select))
+  return(top_genes)
+}
+
+top50_005 <- select_top50(res, sig_005, "padj < 0.05")
+top50_001 <- select_top50(res, sig_001, "padj < 0.01")
+top50_0001 <- select_top50(res, sig_0001, "padj < 0.001")
+
+# PASO 7: PALETAS SUNSET ----
+color_sunset_classic <- colorRampPalette(c(
+  "#1A5319", "#2B6B2A", "#3D833B", "#508D4E", "#63A860",
+  "#80AF81", "#A4C8A4", "#D6EFD8", "#FFFACD",
+  "#FFE89E", "#FFD93D", "#FFC933", "#FFB929",
+  "#FFA500", "#FF9500", "#FF8C00", "#FF7500", "#FF6500"
+))(100)
+
+color_sunset_vibrant <- colorRampPalette(c(
+  "#0D4D1B", "#1E6B28", "#2F8A35", "#40A842", "#5BC658",
+  "#7DD97F", "#A8E6A8", "#FFF9C4",
+  "#FFEB3B", "#FFD700", "#FFC107", "#FFB300",
+  "#FF9800", "#FF8A00", "#FF7C00", "#FF6E00", "#FF5722"
+))(100)
+
+color_sunset_soft <- colorRampPalette(c(
+  "#2D5A3D", "#3E7A4E", "#4F9B5F", "#6BB870", "#87D181",
+  "#A3E593", "#C8F0C8", "#FFFEF0",
+  "#FFF4D4", "#FFE8B8", "#FFDBA0", "#FFCD88",
+  "#FFB570", "#FFA05B", "#FF8B47", "#FF7633", "#FF6121"
+))(100)
+
+condition_colors_sunset <- c("Control" = "#FFB347", "Waterlogging" = "#4A9B5B")
+regulation_colors_sunset <- c(UP = "#FF6B35", DOWN = "#2E7D4E")
+
+# PASO 8: ANOTACIONES ----
+col_anno <- data.frame(
+  Condition = coldata$condition,
+  row.names = coldata$sample
+)
+
+create_row_annotation <- function(gene_names) {
+  data.frame(
+    Regulation = ifelse(res[gene_names, "log2FoldChange"] > 0, "UP", "DOWN"),
+    row.names = gene_names
+  )
+}
+
+# PASO 9: FUNCIÓN HEATMAP ----
+create_sunset_zscore_heatmap <- function(gene_names, criterion_label, 
+                                         filename, color_palette, palette_name) {
+  if(length(gene_names) == 0) {
+    cat(sprintf("⚠ No lncRNAs for %s\n", criterion_label))
+    return(NULL)
+  }
+  
+  tpm_data <- log2(tpm_matrix[gene_names, ] + 1)
+  row_anno <- create_row_annotation(gene_names)
+  
+  ann_colors <- list(
+    Condition = condition_colors_sunset,
+    Regulation = regulation_colors_sunset
+  )
+  
+  png(filename, width = 10, height = 13, units = "in", res = 600)
+  
+  print(pheatmap(tpm_data,
+                 scale = "row",
+                 clustering_distance_rows = "correlation",
+                 clustering_distance_cols = "euclidean",
+                 clustering_method = "ward.D2",
+                 color = color_palette,
+                 annotation_col = col_anno,
+                 annotation_row = row_anno,
+                 annotation_colors = ann_colors,
+                 show_rownames = TRUE,
+                 show_colnames = TRUE,
+                 fontsize = 9,
+                 fontsize_row = 6,
+                 fontsize_col = 9,
+                 border_color = "#F0E6D2",
+                 main = paste0("Top ", length(gene_names), " lncRNAs | ",
+                               criterion_label, " | |log₂FC| > 1"),
+                 treeheight_row = 40,
+                 treeheight_col = 25,
+                 legend = TRUE,
+                 cellwidth = 22,
+                 cellheight = 8,
+                 annotation_names_row = FALSE,
+                 annotation_names_col = FALSE,
+                 cutree_rows = 4))
+  
+  dev.off()
+  cat(sprintf("✓ %s (%s)\n", basename(filename), palette_name))
+}
+
+# PASO 10: GENERAR TODOS LOS HEATMAPS ----
+cat("\n========================================\n")
+cat("GENERATING SUNSET HEATMAPS FOR lncRNAs\n")
+cat("========================================\n\n")
+
+#  CAMBIAR ESTA RUTA A TU CARPETA REAL 
+# OPCIÓN 1: Usar la misma carpeta donde están tus datos
+output_dir <- "C:/Users/Brenda Ochoa/Downloads/"
+
+# OPCIÓN 2: O crear una subcarpeta específica para resultados
+# output_dir <- "C:/Users/Brenda Ochoa/Downloads/lncRNA_Results/"
+# dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Verificar que la carpeta existe
+if (!dir.exists(output_dir)) {
+  stop("ERROR: La carpeta '", output_dir, "' no existe. Por favor créala o ajusta la ruta.")
+}
+
+cat("Guardando archivos en:", output_dir, "\n\n")
+
+# CLASSIC
+cat("Sunset Classic:\n")
+create_sunset_zscore_heatmap(top50_005, "Padj < 0.05", 
+                             paste0(output_dir, "lncRNA_SUNSET_Classic_padj005.png"),
+                             color_sunset_classic, "Classic")
+create_sunset_zscore_heatmap(top50_001, "Padj < 0.01",
+                             paste0(output_dir, "lncRNA_SUNSET_Classic_padj001.png"),
+                             color_sunset_classic, "Classic")
+create_sunset_zscore_heatmap(top50_0001, "Padj < 0.001",
+                             paste0(output_dir, "lncRNA_SUNSET_Classic_padj0001.png"),
+                             color_sunset_classic, "Classic")
+
+# VIBRANT
+cat("\n Sunset Vibrant:\n")
+create_sunset_zscore_heatmap(top50_005, "Padj < 0.05",
+                             paste0(output_dir, "lncRNA_SUNSET_Vibrant_padj005.png"),
+                             color_sunset_vibrant, "Vibrant")
+create_sunset_zscore_heatmap(top50_001, "Padj < 0.01",
+                             paste0(output_dir, "lncRNA_SUNSET_Vibrant_padj001.png"),
+                             color_sunset_vibrant, "Vibrant")
+create_sunset_zscore_heatmap(top50_0001, "Padj < 0.001",
+                             paste0(output_dir, "lncRNA_SUNSET_Vibrant_padj0001.png"),
+                             color_sunset_vibrant, "Vibrant")
+
+# SOFT
+cat("\n Sunset Soft:\n")
+create_sunset_zscore_heatmap(top50_005, "Padj < 0.05",
+                             paste0(output_dir, "lncRNA_SUNSET_Soft_padj005.png"),
+                             color_sunset_soft, "Soft")
+create_sunset_zscore_heatmap(top50_001, "Padj < 0.01",
+                             paste0(output_dir, "lncRNA_SUNSET_Soft_padj001.png"),
+                             color_sunset_soft, "Soft")
+create_sunset_zscore_heatmap(top50_0001, "Padj < 0.001",
+                             paste0(output_dir, "lncRNA_SUNSET_Soft_padj0001.png"),
+                             color_sunset_soft, "Soft")
+
+cat("\nALL lncRNA HEATMAPS COMPLETED!\n")
+cat("═══════════════════════════════════════════════\n")
+
+# PASO 11: EXPORTAR lncRNA IDs ----
+cat("\nEXPORTING lncRNA IDs TO FILES...\n\n")
+
+# Archivos individuales
+write.table(top50_005, 
+            file = paste0(output_dir, "lncRNA_Top50_padj005.txt"),
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+write.table(top50_001, 
+            file = paste0(output_dir, "lncRNA_Top50_padj001.txt"),
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+write.table(top50_0001, 
+            file = paste0(output_dir, "lncRNA_Top50_padj0001.txt"),
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+# Archivo Excel con toda la información
+wb <- createWorkbook()
+
+addWorksheet(wb, "padj_0.05")
+writeData(wb, "padj_0.05", 
+          data.frame(
+            lncRNA_ID = top50_005,
+            log2FoldChange = res[top50_005, "log2FoldChange"],
+            padj = res[top50_005, "padj"],
+            baseMean = res[top50_005, "baseMean"],
+            Regulation = ifelse(res[top50_005, "log2FoldChange"] > 0, "UP", "DOWN")
+          ))
+
+addWorksheet(wb, "padj_0.01")
+writeData(wb, "padj_0.01", 
+          data.frame(
+            lncRNA_ID = top50_001,
+            log2FoldChange = res[top50_001, "log2FoldChange"],
+            padj = res[top50_001, "padj"],
+            baseMean = res[top50_001, "baseMean"],
+            Regulation = ifelse(res[top50_001, "log2FoldChange"] > 0, "UP", "DOWN")
+          ))
+
+addWorksheet(wb, "padj_0.001")
+writeData(wb, "padj_0.001", 
+          data.frame(
+            lncRNA_ID = top50_0001,
+            log2FoldChange = res[top50_0001, "log2FoldChange"],
+            padj = res[top50_0001, "padj"],
+            baseMean = res[top50_0001, "baseMean"],
+            Regulation = ifelse(res[top50_0001, "log2FoldChange"] > 0, "UP", "DOWN")
+          ))
+
+saveWorkbook(wb, paste0(output_dir, "lncRNA_DifferentialExpression_Results.xlsx"), 
+             overwrite = TRUE)
+
+cat("✓ Archivos exportados exitosamente\n")
+cat("✅ ANÁLISIS COMPLETO\n")
+cat("📁 Revisa tus resultados en:", output_dir, "\n")

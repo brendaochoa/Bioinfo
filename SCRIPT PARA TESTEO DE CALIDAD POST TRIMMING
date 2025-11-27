@@ -1,0 +1,30 @@
+#!/bin/bash
+#$ -N FastQC_Optimized
+#$ -t 1-8
+#$ -pe thread 4
+#$ -l h_vmem=8G
+#$ -cwd
+#$ -o logs/fastqc.$SGE_TASK_ID.out
+#$ -e logs/fastqc.$SGE_TASK_ID.err
+
+# Cargar módulo
+source $HOME/.bashrc
+module load programs/fastqc-0.12.1
+
+cd $HOME/RNAseq/lncrna/waterlogging/Vradiata/lncRNAs
+
+mkdir -p qc/fastqc-posttrimming
+
+FILES=(trimmed/*.fq.gz)
+
+FILE=${FILES[$SGE_TASK_ID-1]}
+
+echo "Tarea: $SGE_TASK_ID"
+echo "Archivo: $FILE"
+echo "Threads: 4"
+
+fastqc "$FILE" -o qc/fastqc-posttrimming -t 4
+
+echo ""
+echo "Completado: $FILE"
+echo ""

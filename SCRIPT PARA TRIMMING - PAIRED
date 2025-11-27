@@ -1,0 +1,61 @@
+#!/bin/bash
+#$ -N Trimmomatic_optimizado
+#$ -t 1-2
+#$ -pe thread 8
+#$ -l h_vmem=16G
+#$ -cwd
+#$ -o trimmed/logs/
+#$ -e trimmed/logs/
+
+source $HOME/.bashrc
+module load programs/trimmomatic-0.39
+
+cd $HOME/RNAseq/lncrna/waterlogging/Vradiata/lncRNAs
+
+# Crear directorio de logs si no existe
+mkdir -p trimmed/logs
+
+# Crear archivo de adaptadores combinado si no existe
+if [ ! -f "All-PE.fa" ]; then
+    cat /share/apps/Trimmomatic-0.39/adapters/TruSeq3-PE.fa \
+        /share/apps/Trimmomatic-0.39/adapters/NexteraPE-PE.fa \
+        > All-PE.fa
+fi
+
+SAMPLES=(
+    SRR17976301
+    SRR17976300
+)
+
+SAMPLE=${SAMPLES[$SGE_TASK_ID-1]}
+
+echo "Procesando $SAMPLE con 8 threads..."
+echo "Inicio: $(date)" > trimmed/logs/${SAMPLE}_trimmomatic.log
+
+# Trimmomatic con parámetros ajustados para tus problemas específicos
+java -Xmx14G -jar /share/apps/Trimmomatic-0.39/trimmomatic-0.39.jar PE \
+    -threads 8 \
+    raw_data/${SAMPLE}_1.fastq.gz \
+    raw_data/${SAMPLE}_2.fastq.gz \
+    trimmed/${SAMPLE}_1_paired.fq.gz \
+    trimmed/${SAMPLE}_1_unpaired.fq.gz \
+    trimmed/${SAMPLE}_2_paired.fq.gz \
+    trimmed/${SAMPLE}_2_unpaired.fq.gz \
+    ILLUMINACLIP:All-PE.fa:2:30:10:8:True \
+    HEADCROP:13 \
+    CROP:140 \
+    LEADING:20 \
+    TRAILING:20 \
+    SLIDINGWINDOW:4:25 \
+    MINLEN:75 \
+    2>&1 | tee -a trimmed/logs/${SAMPLE}_trimmomatic.log
+
+echo "Fin: $(date)" >> trimmed/logs/${SAMPLE}_trimmomatic.log
+echo "$SAMPLE completado"
+
+# Ejecutar FastQC en archivos procesados
+echo "Ejecutando FastQC post-trimming..."
+fastqc -t 4 trimmed/${SAMPLE}_1_paired.fq.gz trimmed/${SAMPLE}_2_paired.fq.gz \
+    -o trimmed/fastqc_reports/ 2>&1 | tee -a trimmed/logs/${SAMPLE}_fastqc.log
+
+echo "Pipeline completado: $(date)"

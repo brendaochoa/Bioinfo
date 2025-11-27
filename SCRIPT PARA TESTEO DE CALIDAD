@@ -1,0 +1,35 @@
+#!/bin/bash
+#$ -N FastQC_Optimized
+#$ -t 1-18
+#$ -pe thread 4
+#$ -l h_vmem=8G
+#$ -cwd
+#$ -o logs/fastqc.$TASK_ID.out
+#$ -e logs/fastqc.$TASK_ID.err
+
+# Cargar módulo
+source $HOME/.bashrc
+module load programs/fastqc-0.12.1
+
+# Ir al directorio del proyecto
+cd $HOME/RNAseq/lncrna/waterlogging/Vradiata/lncRNAs
+
+# Crear carpeta de QC
+mkdir -p qc/fastqc
+
+# Crear array con TODOS los archivos fastq
+FILES=(raw_data/*.fastq.gz)
+
+# Obtener el archivo correspondiente a esta tarea
+FILE=${FILES[$SGE_TASK_ID-1]}
+
+echo "Tarea: $SGE_TASK_ID"
+echo "Archivo: $FILE"
+echo "Threads: 4"
+
+# Ejecutar FastQC correctamente
+fastqc "$FILE" -o qc/fastqc -t 4
+
+echo ""
+echo "Completado: $FILE"
+echo ""

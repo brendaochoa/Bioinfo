@@ -1,0 +1,52 @@
+#!/bin/bash
+#$ -N Salmon_Permisivo
+#$ -t 1
+#$ -pe thread 8
+#$ -l h_vmem=16G
+#$ -cwd
+#$ -o logs/salmon/
+#$ -e logs/salmon/
+
+source $HOME/.bashrc
+module load programs/salmon-1.10.3
+
+cd $HOME/RNAseq/lncrna/waterlogging/Vradiata/lncRNAs
+mkdir -p counts logs/salmon
+
+SAMPLES=(
+    SRR17976301
+    SRR17976300
+    SRR17976302
+    SRR17976291
+    SRR17976303
+    SRR17976304
+    SRR17976305
+    SRR17976306
+)
+
+SAMPLE=${SAMPLES[$SGE_TASK_ID-1]}
+
+echo "Cuantificando $SAMPLE con parámetros PERMISIVOS..."
+echo "Inicio: $(date)"
+
+# PARÁMETROS MUY PERMISIVOS
+singularity exec $SIFSALMON salmon quant \
+    -i salmon_index \
+    -l A \
+    -1 raw_data/${SAMPLE}_1.fastq.gz \
+    -2 raw_data/${SAMPLE}_2.fastq.gz \
+    -p 8 \
+    --validateMappings \
+    --minScoreFraction 0.2 \
+    --consensusSlack 0.8 \
+    --allowDovetail \
+    --recoverOrphans \
+    --rangeFactorizationBins 4 \
+    --minAssignedFrags 1 \
+    --reduceGCMemory \
+    -o counts/${SAMPLE}_salmon
+
+echo "Fin: $(date)"
+echo ""
+echo "=== Resultado del mapeo ==="
+cat counts/${SAMPLE}_salmon/aux_info/meta_info.json | grep -E "num_processed|num_mapped|percent_mapped"

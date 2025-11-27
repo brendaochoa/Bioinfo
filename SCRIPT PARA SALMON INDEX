@@ -1,0 +1,30 @@
+#!/bin/bash
+#$ -N Salmon_Index_Combined
+#$ -pe thread 8
+#$ -l h_vmem=16G
+#$ -cwd
+#$ -o logs
+#$ -e logs
+
+source $HOME/.bashrc
+module load programs/salmon-1.10.3
+
+cd $HOME/RNAseq/lncrna/waterlogging/Vradiata/lncRNAs
+mkdir -p salmon_index logs
+
+echo "Combinando mRNA y lncRNA..."
+echo "Inicio: $(date)"
+
+# COMBINAR ambos archivos FASTA
+cat VradiatamRNA.fa VradiatalncRNA.fa > Vradiata_combined.fa
+
+echo "Creando índice Salmon combinado..."
+
+# Crear índice con transcriptoma combinado
+singularity exec $SIFSALMON salmon index \
+    -t Vradiata_combined.fa \
+    -i salmon_index \
+    -p 8
+
+echo "Índice Salmon completado"
+echo "Fin: $(date)"
